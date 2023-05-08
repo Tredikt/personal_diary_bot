@@ -3,6 +3,7 @@ import os
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types.inline_keyboard import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import Message, CallbackQuery, User, ContentType
+from aiogram.types import BotCommand
 
 from inline_keyboard.back_to_goals_markup import back_to_goals_markup
 from inline_keyboard.back_to_quotes_markup import back_to_quotes_markup
@@ -36,6 +37,10 @@ class PersonalDiaryBot:
         self.del_message = False
         self.send_message_flag = False
 
+        self.commands = [
+            BotCommand(command="/menu", description="Открыть меню")
+        ]
+
         if admins:
             self.admins = admins
         else:
@@ -46,7 +51,7 @@ class PersonalDiaryBot:
         logging.basicConfig(level=logging.INFO)
 
     async def start_handler(self, message: Message):
-        """Хэндлер, отслеживающий команду '/start'"""
+        """Хэндлер, отслеживающий команду '/start' и '/menu'"""
         chat = tg_id = message.from_user.id
 
         if (tg_id not in self.users_list) or (await self.is_admin(tg_id) is False):
@@ -264,7 +269,7 @@ class PersonalDiaryBot:
 
         elif callback in goals_dict.values():
             """
-            Код ниже удаляет выполненные цели из запланированных целей и переносит их в выполненные
+            Код ниже удаляет выполненные цели из запланированных и переносит их в выполненные
             """
             data = await self.select_one_base(user_id=user_id, base="goals")
             for elem in data:
@@ -684,7 +689,7 @@ class PersonalDiaryBot:
         """
         Функция регистрирует все хэндлеры
         """
-        self.dp.register_message_handler(self.start_handler, commands=["start"])
+        self.dp.register_message_handler(self.start_handler, commands=["start", "menu"])
         self.dp.register_message_handler(self.admin_handler, commands=["admin"])
         self.dp.register_message_handler(self.text_handler, content_types=ContentType.TEXT)
         self.dp.register_callback_query_handler(self.callback_handler, lambda message: True)
@@ -695,6 +700,8 @@ class PersonalDiaryBot:
         Фукнция запуска бота
         """
         self.add_handlers()
+
+
         executor.start_polling(self.dp, skip_updates=True)
 
 
