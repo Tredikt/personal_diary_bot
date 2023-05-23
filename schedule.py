@@ -15,14 +15,14 @@ async def main_schedule():
 async def scheduler():
     aioschedule.every().day.at("09:00").do(reminder)
 
-    aioschedule.every(3).seconds.do(reminder)
+    # aioschedule.every(3).seconds.do(reminder)
     while True:
         await aioschedule.run_pending()
         await asyncio.sleep(1)
 
 
 async def reminder():
-    connection = connect("databases/personal_diary.db")
+    connection = connect("personal_diary.db")
     cursor = connection.cursor()
 
     sql_query_users = f"""SELECT tg_id FROM users"""
@@ -44,7 +44,7 @@ async def reminder():
         quotes_data = quotes_data.fetchall()
         connection.commit()
 
-        print(goals_data, quotes_data)
+        # print(goals_data, quotes_data)
         goals_row = "<strong>Твой список целей:</strong>\n"
         quote_row = "<strong>Рандомная цитата:</strong>\n"
         if len(goals_data) > 0:

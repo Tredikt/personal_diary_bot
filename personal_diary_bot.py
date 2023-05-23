@@ -14,9 +14,18 @@ from inline_keyboard.quotes_actions_markup import quotes_actions_markup
 from inline_keyboard.goals_actions_markup import goals_actions_markup, goals_mark_markup
 from inline_keyboard.main_menu_markup import main_menu_markup
 
+from tables import (
+    sql_query_reached_goals,
+    sql_query_users,
+    sql_query_days,
+    sql_query_quotes,
+    sql_query_goals
+)
+
 from xlsxwriter import Workbook
 from datetime import datetime, date
 from sqlite3 import connect
+from sqlite3 import Cursor, Connection
 from typing import Dict
 
 from config import bot_token, admins
@@ -108,8 +117,11 @@ class PersonalDiaryBot:
         mess_id = call.message.message_id
 
         goals_dict = await self.dicts(user_id=user_id, base="goals")
+        goals_dict_mark = {key + "mark": value for key, value in goals_dict.items() if len(key) > 0}
         quotes_dict = await self.dicts(user_id=user_id, base="quotes")
 
+        # print(callback)
+        # print(goals_dict, quotes_dict)
         if callback in categories:
             if self.del_message:
                 await self.bot.delete_message(chat, call.message.message_id - 1)
@@ -145,9 +157,9 @@ class PersonalDiaryBot:
 
         elif callback == "goalmark":
             mark_goals = InlineKeyboardMarkup()
-            if goals_dict:
-                for key, value in goals_dict.items():
-                    mark_goals.add(InlineKeyboardButton(f"{key}", callback_data=f"{value}"))
+            if goals_dict_mark:
+                for key, value in goals_dict_mark.items():
+                    mark_goals.add(InlineKeyboardButton(f"{value}", callback_data=f"{key}"))
 
                 mark_goals.add(InlineKeyboardButton("Назад", callback_data="goals"))
 
@@ -172,8 +184,8 @@ class PersonalDiaryBot:
 
             if callback == "deletequote":
                 if quotes_dict:
-                    for i_elem in quotes_dict.keys():
-                        del_goals.add(InlineKeyboardButton(i_elem, callback_data=i_elem))
+                    for key, value in quotes_dict.items():
+                        del_goals.add(InlineKeyboardButton(value, callback_data=str(key)))
                 else:
                     await self.bot.delete_message(chat, mess_id)
                     await self.bot.send_message(
@@ -183,8 +195,8 @@ class PersonalDiaryBot:
 
             elif callback == "deletegoal":
                 if goals_dict:
-                    for i_elem in goals_dict.keys():
-                        del_goals.add(InlineKeyboardButton(f"{i_elem}", callback_data=f"{i_elem}"))
+                    for key, value in goals_dict.items():
+                        del_goals.add(InlineKeyboardButton(f"{value}", callback_data=str(key)))
                 else:
                     await self.bot.delete_message(chat, mess_id)
                     await self.bot.send_message(
@@ -192,8 +204,9 @@ class PersonalDiaryBot:
                         reply_markup=back_to_goals_markup
                     )
 
-            del_goals.add(InlineKeyboardButton("Назад", callback_data=deletings_dict[req[0]][0]))
+            del_goals.add(InlineKeyboardButton("Назад", callback_data=deletings_dict[callback][0]))
             await self.bot.delete_message(chat, call.message.message_id)
+
             await self.bot.send_message(
                 chat,
                 f"Выберите {deletings_dict[callback][1]}, которую хотите удалить",
@@ -202,7 +215,7 @@ class PersonalDiaryBot:
 
         elif callback in quotes_dict:
             """Код используется для удаления цитат"""
-            sql_connection = connect("databases/personal_diary.db")
+            sql_connection = connect("personal_diary.db")
             try:
                 cursor = sql_connection.cursor()
                 sql_query = f"""DELETE from quotes WHERE tg_id={user_id} AND quote="{quotes_dict[callback]}";"""
@@ -220,8 +233,8 @@ class PersonalDiaryBot:
             for elem in quotes:
                 quotes_dict[elem[1]] = elem[1]
 
-            for i_elem in quotes_dict.keys():
-                del_goals.add(InlineKeyboardButton(i_elem, callback_data=i_elem))
+            for key, value in quotes_dict.items():
+                del_goals.add(InlineKeyboardButton(value, callback_data=key))
             del_goals.add(InlineKeyboardButton("Назад", callback_data="quotes"))
 
             if len(quotes) != 0:
@@ -236,10 +249,10 @@ class PersonalDiaryBot:
 
         elif callback in goals_dict:
             """Код используется для удаления целей"""
-            sql_connection = connect("databases/personal_diary.db")
+            sql_connection = connect("personal_diary.db")
             try:
                 cursor = sql_connection.cursor()
-                sql_query = f"""DELETE from goals WHERE goal="{req[0]}" AND tg_id={user_id};"""
+                sql_query = f"""DELETE from goals WHERE goal="{goals_dict[callback]}" AND tg_id={user_id};"""
                 cursor.execute(sql_query)
                 sql_connection.commit()
 
@@ -251,8 +264,8 @@ class PersonalDiaryBot:
                 goals_dict = await self.dicts(user_id=user_id, base="goals")
 
                 if (goals_dict is not None) and (len(goals_dict) > 0):
-                    for key in goals_dict:
-                        mark_goals.add(InlineKeyboardButton(f"{key}", callback_data=f"{key}"))
+                    for key, value in goals_dict.items():
+                        mark_goals.add(InlineKeyboardButton(f"{value}", callback_data=f"{key}"))
 
                     mark_goals.add(InlineKeyboardButton("Назад", callback_data="goals"))
 
@@ -267,7 +280,7 @@ class PersonalDiaryBot:
                     await self.bot.delete_message(chat, call.message.message_id)
                     await self.keyboards(call.message, keyboard="goals")
 
-        elif callback in goals_dict.values():
+        elif callback in goals_dict_mark:
             """
             Код ниже удаляет выполненные цели из запланированных и переносит их в выполненные
             """
@@ -275,7 +288,7 @@ class PersonalDiaryBot:
             for elem in data:
                 tg_id, goal, activation_date = elem
                 break
-            sql_connection = connect("databases/personal_diary.db")
+            sql_connection = connect("personal_diary.db")
 
             try:
                 date_of_completion = str(date(datetime.now().year, datetime.now().month, datetime.now().day))
@@ -295,10 +308,11 @@ class PersonalDiaryBot:
 
             mark_goals = InlineKeyboardMarkup()
             goals_dict = await self.dicts(user_id=user_id, base="goals")
+            goals_dict_mark = {key + "mark": value for key, value in goals_dict.items() if len(key) > 0}
 
-            if len(goals_dict) > 0:
-                for key, value in goals_dict.items():
-                    mark_goals.add(InlineKeyboardButton(f"{key}", callback_data=f"{value}"))
+            if len(goals_dict_mark) > 0:
+                for key, value in goals_dict_mark.items():
+                    mark_goals.add(InlineKeyboardButton(f"{value}", callback_data=f"{key}"))
 
                 mark_goals.add(InlineKeyboardButton("Назад", callback_data="goals"))
 
@@ -325,7 +339,7 @@ class PersonalDiaryBot:
             if os.path.isfile("users-list.xlsx"):
                 os.remove("users-list.xlsx")
 
-            database = connect("databases/personal_diary.db")
+            database = connect("personal_diary.db")
             cursor = database.cursor()
 
             query = f"""SELECT * FROM users"""
@@ -391,7 +405,7 @@ class PersonalDiaryBot:
         Данная функция позвонляет записать информацию о пользователе в базу данных, при вводе им команды /start.
         Так же функция возвращает список id пользователей, если в аргумент action передать 'get'
         """
-        database = connect("databases/personal_diary.db")
+        database = connect("personal_diary.db")
         cursor = database.cursor()
 
         if action.lower() == "write":
@@ -454,7 +468,7 @@ class PersonalDiaryBot:
             if data:
                 row = f"Твой список цитат \U0001F4CB:\n"
                 for num, i_elem in enumerate(data):
-                    row += f"{num + 1}) {i_elem[1]}.\n"
+                    row += f"{num + 1}) {i_elem[1]}\n"
 
                 await self.bot.send_message(chat, row, reply_markup=back_to_quotes_markup)
 
@@ -475,7 +489,7 @@ class PersonalDiaryBot:
             goals_dict = dict()
 
             for num, elem in enumerate(goals):
-                goals_dict[elem[1]] = f"goal{num + 1}"
+                goals_dict[f"goal{num + 1}"] = elem[1]
 
             return goals_dict
 
@@ -483,8 +497,8 @@ class PersonalDiaryBot:
             quotes = await self.select_one_base(user_id=user_id, base="quotes")
             quotes_dict = dict()
 
-            for elem in quotes:
-                quotes_dict[elem[1]] = elem[1]
+            for num, elem in enumerate(quotes):
+                quotes_dict[f"quote{num + 1}"] = elem[1]
 
             return quotes_dict
 
@@ -494,7 +508,7 @@ class PersonalDiaryBot:
         Функция записывает данные в выбранную базу данных
         """
 
-        sql_connection = connect("databases/personal_diary.db")
+        sql_connection = connect("personal_diary.db")
         chat = message.chat.id
         text = message.text
         tg_id = message.from_user.id
@@ -572,28 +586,29 @@ class PersonalDiaryBot:
         Данная функция достаёт информацию о действиях пользователя за определённый день
         """
         chat = user_id
-        connection = connect("databases/personal_diary.db")
+        connection = connect("personal_diary.db")
 
         try:
             cursor = connection.cursor()
-            goals_query = f"""SELECT goal FROM goals WHERE tg_id={user_id} AND activation_date="{day}";"""
-            reached_query = f"""SELECT goal FROM reached_goals WHERE tg_id={user_id} AND date_of_completion="{day}";"""
-            quotes_query = f"""SELECT quote FROM quotes WHERE tg_id={user_id} AND activation_date="{day}";"""
-            days_query = f"""SELECT writing FROM days WHERE tg_id={user_id} AND activation_date="{day}";"""
 
+            goals_query = f"""SELECT goal FROM goals WHERE tg_id={user_id} AND activation_date="{day}";"""
             goals_data = cursor.execute(goals_query)
             connection.commit()
+            goals_data = goals_data.fetchall()
+
+            reached_query = f"""SELECT goal FROM reached_goals WHERE tg_id={user_id} AND date_of_completion="{day}";"""
             reached_goals_data = cursor.execute(reached_query)
             connection.commit()
+            reached_goals_data = reached_goals_data.fetchall()
+
+            quotes_query = f"""SELECT quote FROM quotes WHERE tg_id={user_id} AND activation_date="{day}";"""
             quotes_data = cursor.execute(quotes_query)
             connection.commit()
+            quotes_data = quotes_data.fetchall()
+
+            days_query = f"""SELECT writing FROM days WHERE tg_id={user_id} AND activation_date="{day}";"""
             days_data = cursor.execute(days_query)
             connection.commit()
-
-
-            goals_data = goals_data.fetchall()
-            reached_goals_data = reached_goals_data.fetchall()
-            quotes_data = quotes_data.fetchall()
             days_data = days_data.fetchall()
 
             row = "В этот день ты:"
@@ -636,7 +651,7 @@ class PersonalDiaryBot:
     @staticmethod
     async def select_one_base(user_id: int, base: str):
         """Функция достаёт информацию о пользователе и выбранной базы данных"""
-        sql_connection = connect("databases/personal_diary.db")
+        sql_connection = connect("personal_diary.db")
 
         try:
             cursor = sql_connection.cursor()
@@ -661,7 +676,7 @@ class PersonalDiaryBot:
         self.add_goal_flag = False
         self.add_quote_flag = False
 
-    async def keyboards(self, message, keyboard):
+    async def keyboards(self, message: Message, keyboard):
         """Клавиатуры"""
         chat = message.chat.id
 
@@ -703,6 +718,34 @@ class PersonalDiaryBot:
 
 
         executor.start_polling(self.dp, skip_updates=True)
+
+
+
+
+
+connection: Connection = connect("personal_diary.db")
+
+cursor: Cursor = connection.cursor()
+
+cursor.execute(sql_query_users)
+connection.commit()
+
+cursor.execute(sql_query_days)
+connection.commit()
+
+cursor.execute(sql_query_quotes)
+connection.commit()
+
+cursor.execute(sql_query_goals)
+connection.commit()
+
+cursor.execute(sql_query_reached_goals)
+connection.commit()
+
+
+
+cursor.close()
+connection.close()
 
 
 if __name__ == "__main__":
