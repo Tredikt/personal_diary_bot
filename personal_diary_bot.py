@@ -17,6 +17,7 @@ from aiogram.types import BotCommand
 from inline_keyboard.back_to_goals_markup import back_to_goals_markup
 from inline_keyboard.back_to_quotes_markup import back_to_quotes_markup
 from inline_keyboard.back_to_mainmenu_markup import back_to_mainmenu_markup
+from inline_keyboard.back_to_admin_actions_markup import back_to_admin_actions_markup
 
 from inline_keyboard.admin_actions_markup import admin_actions_markup
 from inline_keyboard.quotes_actions_markup import quotes_actions_markup
@@ -84,7 +85,7 @@ class PersonalDiaryBot:
 
         logging.basicConfig(level=logging.INFO)
 
-    async def start_handler(self, message: Message):
+    async def start_handler(self, message: Message) -> None:
         """
         Команды /start и /menu.
 
@@ -161,13 +162,65 @@ class PersonalDiaryBot:
                 )
                 self.send_message_flag: bool = False
 
+                await self.bot.delete_message(
+                    chat_id=chat,
+                    message_id=message.message_id - 1
+                )
+
+                await self.bot.delete_message(
+                    chat_id=chat,
+                    message_id=message.message_id
+                )
+
                 await self.bot.send_message(
                     chat_id=chat,
                     text="Выберите опцию",
                     reply_markup=admin_actions_markup
                 )
 
-    async def callback_handler(self, call: CallbackQuery):
+    async def photo_handler(self, message: Message) -> None:
+        """
+        Хэндер, реагирующий на фото.
+
+        В зависимости от того, какие флаги
+        переведены на True, бот либо сохраняет
+        фото в базу данных, либо выводит.
+        """
+        chat = message["chat"]["id"]
+        caption = message["caption"]
+
+        if self.write_day_flag:
+            await message.photo[-1].download(f"photos/photo_days_{chat}.jpg")
+            await self.add(base="days", message=message, photo_name=f"photos/photo_days_{chat}.jpg")
+
+        elif self.send_message_flag:
+            await message.photo[-1].download(f"photos/photo_message_{chat}.jpg")
+            with open(f"photos/photo_message_{chat}.jpg", "rb") as photo:
+                for chat_id in self.users_list:
+                    await self.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=photo,
+                        caption=caption
+                    )
+                    self.send_message_flag: bool = False
+
+                    await self.bot.send_message(
+                        chat_id=chat,
+                        text="Выберите опцию",
+                        reply_markup=admin_actions_markup
+                    )
+
+    @staticmethod
+    async def error_handler(error: Message, *args) -> None:
+        """
+        Хэндлер, отвечающий за ошибки
+
+        Если во время работы бота произойдёт
+        ошибка, мы сможем отследить её в логах
+        """
+        logging.error(error)
+
+    async def callback_handler(self, call: CallbackQuery) -> None:
         """
         Хэндлер, отвечающий за поведение Inline кнопок.
 
@@ -628,29 +681,31 @@ class PersonalDiaryBot:
 
             row: int = 0  # номер строки
 
-            worksheet.write(row, 0, "tg_id")
-            worksheet.write(row, 1, "username")
-            worksheet.write(row, 2, "first_name")
-            worksheet.write(row, 3, "last_name")
-            worksheet.write(row, 4, "activation_date")
+            worksheet.write(row, 0, "id")
+            worksheet.write(row, 1, "tg_id")
+            worksheet.write(row, 2, "username")
+            worksheet.write(row, 3, "first_name")
+            worksheet.write(row, 4, "last_name")
+            worksheet.write(row, 5, "activation_date")
 
             for i_elem in data:
-                tg_id, \
-                    username, \
-                    first_name, \
-                    last_name, \
-                    activation_date = i_elem
+                id, tg_id, username, first_name, last_name, activation_date = i_elem
 
                 row += 1
-                worksheet.write(row, 0, tg_id)
-                worksheet.write(row, 1, username)
-                worksheet.write(row, 2, first_name)
-                worksheet.write(row, 3, last_name)
-                worksheet.write(row, 4, activation_date)
+                worksheet.write(row, 0, id)
+                worksheet.write(row, 1, tg_id)
+                worksheet.write(row, 2, username)
+                worksheet.write(row, 3, first_name)
+                worksheet.write(row, 4, last_name)
+                worksheet.write(row, 5, activation_date)
 
             wb.close()
 
-            await self.bot.delete_message(chat, mess_id)
+            await self.bot.delete_message(
+                chat_id=chat,
+                message_id=mess_id
+            )
+
             with open("users-list.xlsx", "rb") as document:
                 await self.bot.send_message(
                     chat_id=chat,
@@ -671,12 +726,32 @@ class PersonalDiaryBot:
 
         elif callback == "message-to-users":
             self.send_message_flag: bool = True
+
+            await self.bot.delete_message(
+                chat_id=chat,
+                message_id=mess_id
+            )
+
             await self.bot.send_message(
                 chat_id=chat,
                 text="Введите сообщение, "
-                     "которое хотите отправить пользователям:"
+                     "которое хотите отправить пользователям:",
+                reply_markup=back_to_admin_actions_markup
             )
 
+        elif callback == "back-to-admin-actions":
+            self.send_message_flag: bool = False
+
+            await self.bot.delete_message(
+                chat_id=chat,
+                message_id=mess_id
+            )
+
+            await self.bot.send_message(
+                chat_id=chat,
+                text="Выберите опцию",
+                reply_markup=admin_actions_markup
+            )
     async def admin_handler(self, message: Message) -> None:
         """
         Админ-панель.
@@ -864,7 +939,7 @@ class PersonalDiaryBot:
 
             return quotes_dict
 
-    async def add(self, base: str, message: Message) -> None:
+    async def add(self, base: str, message: Message, photo_name=None) -> None:
         """
         Функция записывает данные в выбранную базу данных.
 
@@ -888,13 +963,6 @@ class PersonalDiaryBot:
 
             cursor: Cursor = sql_connection.cursor()
 
-            sql_day_query: str = f"""
-                                 INSERT INTO days
-                                 (tg_id, activation_date, writing)
-                                 VALUES
-                                 ({tg_id}, "{activation_date}", "{text}");
-                                 """
-
             sql_goal_query: str = f"""
                                    INSERT INTO goals
                                    (goal, activation_date, tg_id)
@@ -916,7 +984,26 @@ class PersonalDiaryBot:
                 cursor.execute(sql_quote_query)
 
             elif base.lower() == "days":
-                cursor.execute(sql_day_query)
+                image = None
+                if photo_name is not None:
+                    image = open(photo_name, "rb")
+
+
+                sql_day_query: str = f"""
+                                      INSERT INTO days
+                                      (tg_id, activation_date, writing, image)
+                                      VALUES
+                                      (?, ?, ?, ?);
+                                      """
+
+                if text is None:
+                    text = message["caption"]
+
+                photo = image.read()
+                params = (tg_id, activation_date, text, photo)
+                cursor.execute(sql_day_query, params)
+                if image:
+                    image.close()
 
             sql_connection.commit()
 
@@ -1011,7 +1098,7 @@ class PersonalDiaryBot:
             connection.commit()
             quotes_data: List = quotes_data.fetchall()
 
-            days_query: str = f"""SELECT writing FROM days
+            days_query: str = f"""SELECT writing, image FROM days
                                   WHERE tg_id={user_id}
                                   AND activation_date="{day}";"""
 
@@ -1022,8 +1109,21 @@ class PersonalDiaryBot:
             row = "В этот день ты:"
             if days_data:
                 row += "\nДобавил записи:\n"
+                if days_data[0][1]:
+                    await self.bot.send_message(
+                        chat_id=chat,
+                        text="Добавил картинок с текстом:"
+                    )
                 for num, elem in enumerate(days_data):
+                    if elem[1]:
+                        photo = elem[1]
+                        await self.bot.send_photo(
+                            chat_id=chat,
+                            photo=photo,
+                            caption=elem[0]
+                        )
                     row += f"{num + 1}) {elem[0]}\n"
+
 
             if reached_goals_data:
                 row += "\nДостиг целей:\n"
@@ -1146,10 +1246,19 @@ class PersonalDiaryBot:
         self.dp.register_message_handler(
             callback=self.text_handler,
             content_types=ContentType.TEXT
-
         )
+
+        self.dp.register_message_handler(
+            callback=self.photo_handler,
+            content_types=ContentType.PHOTO
+        )
+
         self.dp.register_callback_query_handler(
             callback=self.callback_handler,
+        )
+
+        self.dp.register_errors_handler(
+            callback=self.error_handler
         )
 
     def run(self) -> None:

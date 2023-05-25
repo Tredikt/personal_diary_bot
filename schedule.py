@@ -5,6 +5,7 @@ from aiogram import Bot
 from config import bot_token
 from random import choice
 
+shedule_flag = False
 bot = Bot(token=bot_token)
 
 
@@ -12,8 +13,17 @@ async def main_schedule():
     await asyncio.create_task(scheduler())
 
 
+async def turn_on_flag():
+    global shedule_flag
+    shedule_flag = True
+
+
 async def scheduler():
-    aioschedule.every().day.at("09:00").do(reminder)
+    global shedule_flag
+    if shedule_flag:
+        aioschedule.every().day.at("09:00").do(reminder)
+        shedule_flag = False
+    aioschedule.every().day.at("8:55").do(turn_on_flag)
 
     # aioschedule.every(3).seconds.do(reminder)
     while True:
