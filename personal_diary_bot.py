@@ -126,8 +126,8 @@ class PersonalDiaryBot:
             await self.add(base="days", message=message)
 
         elif self.remind_day_flag:
-            day, month = list(map(int, text.split(".")))
-            year: int = 2023
+            day, month, year = list(map(int, text.split(".")))
+
             try:
                 made_date = str(date(year, month, day))
                 await self.select_all_bases(user_id=tg_id, day=made_date)
@@ -280,12 +280,16 @@ class PersonalDiaryBot:
                 message_id=mess_id
             )
 
+            dates = await self.select_dates(tg_id=chat)
+
+            text = "Напиши день, который хотите вспомнить. " \
+                   "\n\nПример: \n1) 24.09.2023\n"
+
+            text = text if dates is None else text + dates
+
             await self.bot.send_message(
                 chat_id=chat,
-                text="Напиши день, который хотите вспомнить. "
-                "\n\nПримеры: "
-                "\n1) 24.09"
-                "\n2) 01.03",
+                text=text,
                 reply_markup=back_to_mainmenu_markup
             )
             self.remind_day_flag: bool = True
@@ -564,12 +568,15 @@ class PersonalDiaryBot:
                 user_id=user_id,
                 base="goals"
             )
+
+            tg_id: int = int()
+            goal: str = str()
+
             for elem in data:
                 tg_id, goal, activation_date = elem
                 break
             sql_connection: Connection = connect("personal_diary.db")
-            tg_id: int = int()
-            goal: str = str()
+
 
             try:
                 date_of_completion: str = str(
@@ -752,6 +759,7 @@ class PersonalDiaryBot:
                 text="Выберите опцию",
                 reply_markup=admin_actions_markup
             )
+
     async def admin_handler(self, message: Message) -> None:
         """
         Админ-панель.
@@ -1159,6 +1167,65 @@ class PersonalDiaryBot:
                 connection.close()
 
     @staticmethod
+    async def select_dates(tg_id: int) -> str or None:
+        """
+        Функция сбора дат.
+
+        В данной функции мы подключаемся к базе
+        данных и берём все даты, в которые пользователь
+        совершал действия, чтобы облегчить поиск по дате.
+        """
+        connection: Connection = connect("personal_diary.db")
+
+        try:
+            cursor: Cursor = connection.cursor()
+
+            goals_query: str = f"""SELECT activation_date FROM goals
+                                           WHERE tg_id={tg_id};"""
+
+            goals_data: Cursor = cursor.execute(goals_query)
+            connection.commit()
+            goals_data: List = goals_data.fetchall()
+
+            reached_query: str = f"""SELECT date_of_completion FROM reached_goals
+                                             WHERE tg_id={tg_id};"""
+
+            reached_goals_data: Cursor = cursor.execute(reached_query)
+            connection.commit()
+            reached_goals_data: List = reached_goals_data.fetchall()
+
+            quotes_query: str = f"""SELECT activation_date FROM quotes
+                                            WHERE tg_id={tg_id};"""
+
+            quotes_data: Cursor = cursor.execute(quotes_query)
+            connection.commit()
+            quotes_data: List = quotes_data.fetchall()
+
+            days_query: str = f"""SELECT activation_date FROM days
+                                          WHERE tg_id={tg_id};"""
+
+            days_data: Cursor = cursor.execute(days_query)
+            connection.commit()
+            days_data: List = days_data.fetchall()
+
+            data_list = [goals_data, reached_goals_data, quotes_data, days_data]
+            dates_set: set = {elem[0] for dates_list in data_list for elem in dates_list}
+            end_list: List = sorted([".".join(elem.split("-")[::-1]) for elem in dates_set])
+
+            row: str = "Доступные даты:\n"
+
+            for num, date in enumerate(end_list):
+                row += f"{num + 1}) {date}\n"
+
+            if len(end_list) > 0:
+                return row
+            return None
+
+        finally:
+            if connection:
+                connection.close()
+
+    @staticmethod
     async def select_one_base(user_id: int, base: str) -> List:
         """
         Функция достаёт информацию о пользователе и выбранной базы данных.
@@ -1182,6 +1249,8 @@ class PersonalDiaryBot:
         finally:
             if sql_connection:
                 sql_connection.close()
+
+
 
     async def turn_off_flags(self) -> None:
         """
@@ -1232,7 +1301,7 @@ class PersonalDiaryBot:
 
         Здесь происходит регистрация хэндлеров, реагирующих
         на команды /start, /menu и /admin, а так же хэндеров,
-        реагирующих на ошибки, текст, фото и callback запрсосы.
+        реагирующих на ошибки, текст, фото и callback запросы.
         """
         self.dp.register_message_handler(
             callback=self.start_handler,

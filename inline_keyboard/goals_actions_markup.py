@@ -8,5 +8,5 @@ goals_actions_markup.add(InlineKeyboardButton("В главное меню", call
 
 
 goals_mark_markup = InlineKeyboardMarkup()
-goals_mark_markup.add(InlineKeyboardButton("Отметить выполненные", callback_data="goalmar"))
+goals_mark_markup.add(InlineKeyboardButton("Отметить выполненные", callback_data="goalmark"))
 goals_mark_markup.add(InlineKeyboardButton("Назад", callback_data="goals"))
