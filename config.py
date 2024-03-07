@@ -1,15 +1,11 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv(".env.example")
+# load_dotenv(".env.data")
 
 
-bot_token = os.getenv("BOT_TOKEN")
-
-admins = os.getenv("admins_ids")
-
-if admins:
-    admins = list(map(int, admins.split()))
+bot_token = ""  # BOT TOKEN from @BotFather
+admins = ""  # Admins ids. Write your ID here and your will get access to admin_panel
 
 
 categories_lists = {

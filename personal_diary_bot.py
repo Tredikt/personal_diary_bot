@@ -126,9 +126,8 @@ class PersonalDiaryBot:
             await self.add(base="days", message=message)
 
         elif self.remind_day_flag:
-            day, month, year = list(map(int, text.split(".")))
-
             try:
+                day, month, year = list(map(int, text.split(".")))
                 made_date = str(date(year, month, day))
                 await self.select_all_bases(user_id=tg_id, day=made_date)
 
@@ -1007,7 +1006,10 @@ class PersonalDiaryBot:
                 if text is None:
                     text = message["caption"]
 
-                photo = image.read()
+                try:
+                    photo = image.read()
+                except:
+                    photo = None
                 params = (tg_id, activation_date, text, photo)
                 cursor.execute(sql_day_query, params)
                 if image:
